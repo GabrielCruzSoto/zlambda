@@ -27,7 +27,7 @@ echo "Version $VERSION"
 echo "================================================================================================================="
 
 FILE_CONFIG="config/lambda_config.json"
-FILE_CLOUDFORMATION="config/lambda_cloudformation.yml"
+FILE_CLOUDFORMATION="config/templete-cf-lambda.yaml"
 FILE_ENV=".local.env"
 CONTENT_FILE_CONFIG=$(prepare_json_config $FILE_CONFIG $FILE_ENV)
 
