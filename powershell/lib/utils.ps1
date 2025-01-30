@@ -1,78 +1,67 @@
-# ==========================================================================================================================
-# Name Script:  lib/utils.ps1
-# Description:  This script allows you to perform actions of a Lambda Function 
-#               such as executing locally and deploying to AWS.
-# ==========================================================================================================================
-
-$script:VERSION = "0.0.1-SNAPSHOT"
-
-function Write-Info {
-    param([string]$message)
-    Write-Host "INFO| $message"
-}
-
-function Write-Error-And-Exit {
-    param(
-        [int]$exitCode,
-        [string]$errorMessage
-    )
-    if ($exitCode -ne 0) {
-        Write-Host "ERROR| $errorMessage"
-        exit $exitCode
-    }
-}
-
 function Show-Help {
-    Write-Host "Usage: $($MyInvocation.ScriptName) [-Runtime <String>] [-Action <String>] [-Help] [-Version]"
+    Write-Host "Usage: .\zlambda.ps1 [-Runtime <String>] [-Action <String>]"
     Write-Host ""
-    Write-Host "Options:"
-    Write-Host "  -Runtime   Runtime execution (local/aws)"
-    Write-Host "  -Action    Action to perform (prepare-env, run, deploy)"
-    Write-Host "  -Help      Show this help message and exit"
-    Write-Host "  -Version   Show version and exit"
+    Write-Host "Parameters:"
+    Write-Host "  -Runtime     Specify the runtime (aws or local)"
+    Write-Host "  -Action      Specify the action to perform (prepare-env, run, deploy)"
+    Write-Host ""
+    Write-Host "Examples:"
+    Write-Host "  .\zlambda.ps1 -Runtime local -Action run"
+    Write-Host "  .\zlambda.ps1 -Runtime aws -Action deploy"
     exit 0
 }
 
-function Show-Version {
-    Write-Host "Version $VERSION"
-    exit 0
-}
-
-function Test-JsonConfig {
-    param([string]$configFile)
-    
-    if (-not (Test-Path $configFile)) {
-        Write-Host "ERROR| Configuration file not found: $configFile"
-        exit 1
-    }
-    
-    $config = Get-Content $configFile | ConvertFrom-Json
-    $requiredFields = @(
-        "functionName",
-        "infraestructure.runtime",
-        "infraestructure.handler",
-        "dirSource"
-    )
-    
-    foreach ($field in $requiredFields) {
-        $value = $config
-        foreach ($part in $field.Split('.')) {
-            $value = $value.$part
-        }
-        if ($null -eq $value) {
-            Write-Host "ERROR| Required field missing in config: $field"
-            exit 1
-        }
-    }
-}
-
-function Test-CondaInstalled {
+function Test-CondaEnvironment {
     try {
-        $null = Get-Command conda -ErrorAction Stop
+        $condaInfo = conda info --json | ConvertFrom-Json
         return $true
     }
     catch {
-        Write-Host "ERROR| Conda is not installed or not in PATH"
-        exit 1
+        return $false
     }
+}
+
+function Get-ContentFileConfigValues {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ConfigFile,
+        
+        [Parameter(Mandatory=$true)]
+        [string]$EnvFile
+    )
+
+    if (-not (Test-Path $ConfigFile)) {
+        throw "Configuration file not found: $ConfigFile"
+    }
+
+    # Leer el archivo de configuración como texto para poder hacer reemplazos
+    $configContent = Get-Content $ConfigFile -Raw
+
+    # Crear un diccionario para almacenar las variables de entorno
+    $envVars = @{}
+
+    if (Test-Path $EnvFile) {
+        $envContent = Get-Content $EnvFile
+        foreach ($line in $envContent) {
+            if ($line -match '^export\s+([^=]+)=(.*)$') {
+                $key = $matches[1].Trim()
+                $value = $matches[2].Trim()
+                $envVars[$key] = $value
+                
+                # Reemplazar cada variable en el contenido JSON
+                $placeholder = "\`${$key}"
+                $configContent = $configContent -replace $placeholder, $value
+            }
+        }
+    }
+
+    # Convertir el contenido JSON con las variables reemplazadas a un objeto PowerShell
+    try {
+        $config = $configContent | ConvertFrom-Json
+    }
+    catch {
+        throw "Error parsing JSON configuration after variable substitution: $_"
+    }
+
+    return $config
 }
